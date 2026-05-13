@@ -1,0 +1,77 @@
+import { Global, Module, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as nodemailer from 'nodemailer';
+
+@Injectable()
+export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
+  private transporter?: nodemailer.Transporter;
+  private from: string;
+  private logToConsole: boolean;
+
+  constructor(private readonly config: ConfigService) {
+    this.from = this.config.get<string>('SMTP_FROM') ?? 'no-reply@example.com';
+    this.logToConsole = this.config.get('EMAIL_LOG_TO_CONSOLE') === 'true';
+
+    const host = this.config.get<string>('SMTP_HOST');
+    if (host && !this.logToConsole) {
+      this.transporter = nodemailer.createTransport({
+        host,
+        port: Number(this.config.get('SMTP_PORT') ?? 587),
+        secure: false,
+        auth: {
+          user: this.config.get('SMTP_USER'),
+          pass: this.config.get('SMTP_PASS'),
+        },
+      });
+    }
+  }
+
+  async send(to: string, subject: string, html: string, text?: string): Promise<void> {
+    if (this.logToConsole || !this.transporter) {
+      this.logger.log(`\n────── EMAIL (console mode) ──────`);
+      this.logger.log(`To:      ${to}`);
+      this.logger.log(`Subject: ${subject}`);
+      this.logger.log(`Body:\n${text ?? html.replace(/<[^>]+>/g, '')}`);
+      this.logger.log(`──────────────────────────────────\n`);
+      return;
+    }
+   try {
+  const info = await this.transporter.sendMail({ from: this.from, to, subject, html, text });
+  this.logger.log(`✉  Email sent to ${to} — messageId: ${info.messageId}`);
+} catch (err) {
+  this.logger.error(`Failed to send email to ${to}: ${(err as Error).message}`);
+  this.logger.error((err as Error).stack);
+}
+  }
+
+  async sendInvite(to: string, name: string, inviteUrl: string): Promise<void> {
+    const subject = 'Welcome to Prima Data Portal — Set your password';
+    const html = `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <h2 style="color:#1a6b4a">Prima Data Portal</h2>
+        <p>Hi ${name},</p>
+        <p>You've been invited to access the Prima Data Portal. Click the link below to set your password and activate your account:</p>
+        <p><a href="${inviteUrl}" style="display:inline-block;padding:10px 20px;background:#1a6b4a;color:#fff;text-decoration:none;border-radius:6px">Set up my account</a></p>
+        <p style="color:#6b7280;font-size:13px">This link expires in 7 days.<br>If you didn't expect this email, you can ignore it.</p>
+      </div>`;
+    return this.send(to, subject, html);
+  }
+
+  async sendPasswordReset(to: string, name: string, resetUrl: string): Promise<void> {
+    const subject = 'Prima Data Portal — Password reset request';
+    const html = `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <h2 style="color:#1a6b4a">Password reset</h2>
+        <p>Hi ${name},</p>
+        <p>We received a request to reset your password. Click the link below to set a new one:</p>
+        <p><a href="${resetUrl}" style="display:inline-block;padding:10px 20px;background:#1a6b4a;color:#fff;text-decoration:none;border-radius:6px">Reset password</a></p>
+        <p style="color:#6b7280;font-size:13px">This link expires in 1 hour.<br>If you didn't request this, you can ignore this email.</p>
+      </div>`;
+    return this.send(to, subject, html);
+  }
+}
+
+@Global()
+@Module({ providers: [EmailService], exports: [EmailService] })
+export class EmailModule {}

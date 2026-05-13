@@ -1,0 +1,218 @@
+// Prima Data Portal v4 — database schema
+// Improvements over v3: real version history, hashed refresh tokens,
+// MFA fields, password reset tokens, separate file_key for S3.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Users ─────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  DATA_MANAGER
+  CLIENT
+}
+
+enum UserStatus {
+  PENDING_INVITE
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  passwordHash    String?
+  fullName        String
+  companyName     String?
+  notes           String?
+  role            UserRole   @default(CLIENT)
+  status          UserStatus @default(ACTIVE)
+
+  // MFA (TOTP / authenticator app)
+  mfaSecret       String?
+  mfaEnabled      Boolean    @default(false)
+
+  // Tokens for invite + reset flows
+  inviteToken     String?    @unique
+  inviteExpiresAt DateTime?
+  resetToken      String?    @unique
+  resetExpiresAt  DateTime?
+
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  refreshTokens   RefreshToken[]
+  datasetAccess   DatasetAccess[]
+  uploadedDatasets Dataset[]      @relation("UploadedBy")
+  downloads       Download[]
+  auditEvents     AuditEvent[]   @relation("ActorEvents")
+
+  @@index([status])
+  @@index([role])
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  userAgent   String?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ─── Datasets ──────────────────────────────────────────────────────
+
+enum DatasetCategory {
+  EDUCATION
+  RETAIL
+  GEOSPATIAL
+  CONSUMER
+  INDUSTRY
+  FINANCIAL
+  OTHER
+}
+
+enum DatasetStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Dataset {
+  id              String          @id @default(uuid())
+  name            String
+  slug            String          @unique
+  description     String          @db.Text
+  category        DatasetCategory
+  status          DatasetStatus   @default(DRAFT)
+  fileType        String?         // e.g. "XLSX", "CSV"
+  recordCount     Int             @default(0)
+  coverage        String?         // e.g. "2018–2026"
+
+  currentVersionId String?        @unique
+  currentVersion   DatasetVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  uploadedById    String
+  uploadedBy      User            @relation("UploadedBy", fields: [uploadedById], references: [id])
+
+  publishedAt     DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  versions        DatasetVersion[]
+  access          DatasetAccess[]
+  downloads       Download[]
+
+  @@index([status])
+  @@index([category])
+}
+
+model DatasetVersion {
+  id              String   @id @default(uuid())
+  datasetId       String
+  dataset         Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  version         String
+  fileKey         String   // S3/Supabase Storage object key
+  fileName        String
+  fileSizeBytes   BigInt
+  mimeType        String
+  changelog       String?  @db.Text
+  publishedAt     DateTime @default(now())
+
+  currentFor      Dataset? @relation("CurrentVersion")
+
+  @@unique([datasetId, version])
+  @@index([datasetId])
+}
+
+// ─── Access control ────────────────────────────────────────────────
+
+model DatasetAccess {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  datasetId   String
+  dataset     Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  grantedAt   DateTime  @default(now())
+  grantedById String?
+
+  @@unique([userId, datasetId])
+  @@index([userId])
+  @@index([datasetId])
+}
+
+// ─── Downloads (separate from audit for fast client-side history) ─
+
+model Download {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  datasetId   String
+  dataset     Dataset   @relation(fields: [datasetId], references: [id])
+  versionId   String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([datasetId])
+  @@index([createdAt])
+}
+
+// ─── Audit log ─────────────────────────────────────────────────────
+
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  PASSWORD_CHANGED
+  MFA_ENABLED
+  MFA_DISABLED
+  USER_CREATED
+  USER_UPDATED
+  USER_DISABLED
+  USER_RESTORED
+  USER_DELETED
+  DATASET_UPLOADED
+  DATASET_UPDATED
+  DATASET_PUBLISHED
+  DATASET_ARCHIVED
+  DATASET_DOWNLOADED
+  DATASET_DELETED
+  ACCESS_GRANTED
+  ACCESS_REVOKED
+}
+
+model AuditEvent {
+  id          String       @id @default(uuid())
+  action      AuditAction
+  actorId     String?
+  actor       User?        @relation("ActorEvents", fields: [actorId], references: [id], onDelete: SetNull)
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime     @default(now())
+
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
