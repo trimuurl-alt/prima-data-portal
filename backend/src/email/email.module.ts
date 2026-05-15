@@ -15,16 +15,17 @@ export class EmailService {
 
     const host = this.config.get<string>('SMTP_HOST');
     if (host && !this.logToConsole) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port: Number(this.config.get('SMTP_PORT') ?? 587),
-        secure: false,
-        auth: {
-          user: this.config.get('SMTP_USER'),
-          pass: this.config.get('SMTP_PASS'),
-        },
-      });
-    }
+  const port = Number(this.config.get('SMTP_PORT') ?? 587);
+  this.transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: {
+      user: this.config.get('SMTP_USER'),
+      pass: this.config.get('SMTP_PASS'),
+    },
+  });
+}
   }
 
   async send(to: string, subject: string, html: string, text?: string): Promise<void> {
