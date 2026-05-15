@@ -247,14 +247,36 @@ export class UsersService {
 
   async delete(id: string, actorId: string) {
   if (id === actorId) throw new BadRequestException('You cannot delete your own account');
-  const exists = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
-  if (!exists) throw new NotFoundException();
-  await this.prisma.user.delete({ where: { id } });
-    await this.audit.log({
-      action: AuditAction.USER_DELETED,
-      actorId, targetType: 'User', targetId: id,
+  const user = await this.prisma.user.findUnique({ where: { id } });
+  if (!user) throw new NotFoundException();
+
+  // Last-admin guard
+  if (user.role === UserRole.ADMIN) {
+    const adminCount = await this.prisma.user.count({
+      where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
     });
+    if (adminCount <= 1) throw new BadRequestException('Cannot delete the only active admin');
   }
+
+  // Clear child rows in a single transaction
+  await this.prisma.$transaction([
+    this.prisma.refreshToken.deleteMany({ where: { userId: id } }),
+    this.prisma.datasetAccess.deleteMany({ where: { userId: id } }),
+    this.prisma.download.deleteMany({ where: { userId: id } }),
+    // Audit events: keep the history but null-out the actor
+    this.prisma.auditEvent.updateMany({
+      where: { actorId: id },
+      data: { actorId: null },
+    }),
+    this.prisma.user.delete({ where: { id } }),
+  ]);
+
+  await this.audit.log({
+    action: AuditAction.USER_DELETED,
+    actorId, targetType: 'User', targetId: id,
+    metadata: { email: user.email, name: user.fullName },
+  });
+}
 
   async accessFor(userId: string) {
     return this.prisma.datasetAccess.findMany({
