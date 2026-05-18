@@ -3,21 +3,18 @@
   "version": "4.0.0",
   "private": true,
   "scripts": {
-  "build": "nest build",
-  "start": "nest start",
-  "start:dev": "nest start --watch",
-  "start:prod": "node dist/src/main.js",
-
-  "prisma:generate": "prisma generate",
-  "prisma:migrate": "prisma migrate dev",
-  "prisma:deploy": "prisma migrate deploy",
-  "prisma:studio": "prisma studio",
-
-  "seed": "ts-node prisma/seed.ts",
-
-  "railway:build": "prisma generate && nest build",
-  "railway:start": "prisma migrate deploy && npm run start:prod"
-},
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/src/main.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "seed": "ts-node prisma/seed.ts",
+    "railway:build": "prisma generate && nest build",
+    "railway:start": "prisma migrate deploy && npm run start:prod"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.478.0",
     "@aws-sdk/s3-request-presigner": "^3.478.0",
@@ -40,6 +37,7 @@
     "passport-jwt": "^4.0.1",
     "qrcode": "^1.5.3",
     "reflect-metadata": "^0.1.14",
+    "resend": "^6.12.3",
     "rxjs": "^7.8.1",
     "speakeasy": "^2.0.0",
     "uuid": "^9.0.1"

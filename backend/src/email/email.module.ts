@@ -1,35 +1,51 @@
 import { Global, Module, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Resend } from 'resend';
 import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter?: nodemailer.Transporter;
+  private resend?: Resend;
+  private smtp?: nodemailer.Transporter;
   private from: string;
   private logToConsole: boolean;
+  private mode: 'resend' | 'smtp' | 'console';
 
   constructor(private readonly config: ConfigService) {
     this.from = this.config.get<string>('SMTP_FROM') ?? 'no-reply@example.com';
     this.logToConsole = this.config.get('EMAIL_LOG_TO_CONSOLE') === 'true';
 
-    const host = this.config.get<string>('SMTP_HOST');
-    if (host && !this.logToConsole) {
-  const port = Number(this.config.get('SMTP_PORT') ?? 587);
-  this.transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: {
-      user: this.config.get('SMTP_USER'),
-      pass: this.config.get('SMTP_PASS'),
-    },
-  });
-}
+    const resendKey = this.config.get<string>('RESEND_API_KEY');
+    const smtpHost = this.config.get<string>('SMTP_HOST');
+
+    if (this.logToConsole) {
+      this.mode = 'console';
+    } else if (resendKey) {
+      this.resend = new Resend(resendKey);
+      this.mode = 'resend';
+      this.logger.log('Email transport: Resend HTTP API');
+    } else if (smtpHost) {
+      const port = Number(this.config.get('SMTP_PORT') ?? 587);
+      this.smtp = nodemailer.createTransport({
+        host: smtpHost,
+        port,
+        secure: port === 465,
+        auth: {
+          user: this.config.get('SMTP_USER'),
+          pass: this.config.get('SMTP_PASS'),
+        },
+      });
+      this.mode = 'smtp';
+      this.logger.log('Email transport: SMTP');
+    } else {
+      this.mode = 'console';
+      this.logger.warn('No email transport configured — falling back to console');
+    }
   }
 
   async send(to: string, subject: string, html: string, text?: string): Promise<void> {
-    if (this.logToConsole || !this.transporter) {
+    if (this.mode === 'console') {
       this.logger.log(`\n────── EMAIL (console mode) ──────`);
       this.logger.log(`To:      ${to}`);
       this.logger.log(`Subject: ${subject}`);
@@ -37,13 +53,28 @@ export class EmailService {
       this.logger.log(`──────────────────────────────────\n`);
       return;
     }
-   try {
-  const info = await this.transporter.sendMail({ from: this.from, to, subject, html, text });
-  this.logger.log(`✉  Email sent to ${to} — messageId: ${info.messageId}`);
-} catch (err) {
-  this.logger.error(`Failed to send email to ${to}: ${(err as Error).message}`);
-  this.logger.error((err as Error).stack);
-}
+
+    try {
+      if (this.mode === 'resend' && this.resend) {
+        const result = await this.resend.emails.send({
+          from: this.from,
+          to,
+          subject,
+          html,
+          ...(text ? { text } : {}),
+        });
+        if (result.error) {
+          this.logger.error(`Resend rejected email to ${to}: ${JSON.stringify(result.error)}`);
+        } else {
+          this.logger.log(`✉  Email sent to ${to} — id: ${result.data?.id}`);
+        }
+      } else if (this.mode === 'smtp' && this.smtp) {
+        const info = await this.smtp.sendMail({ from: this.from, to, subject, html, text });
+        this.logger.log(`✉  Email sent to ${to} — messageId: ${info.messageId}`);
+      }
+    } catch (err) {
+      this.logger.error(`Failed to send email to ${to}: ${(err as Error).message}`);
+    }
   }
 
   async sendInvite(to: string, name: string, inviteUrl: string): Promise<void> {
