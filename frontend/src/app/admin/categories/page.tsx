@@ -19,7 +19,7 @@ export default function AdminCategoriesPage() {
           <div>
             <h1 className="text-[15px] font-medium text-stone-900">Categories</h1>
             <p className="text-xs text-stone-500 mt-0.5">
-              Manage the categories used to organise datasets. Drag-style sorting isn&apos;t supported yet — use the sort number to reorder.
+              Manage the categories used to organise datasets. Use the sort number to reorder.
             </p>
           </div>
           <button
@@ -30,8 +30,16 @@ export default function AdminCategoriesPage() {
           </button>
         </header>
 
-        <div className="p-5">
-          {tree.isLoading && <div className="text-sm text-stone-500">Loading…</div>}
+        {/* Column headers */}
+        <div className="px-3 py-2 bg-stone-50/60 border-b border-stone-100 grid grid-cols-[1fr_160px_120px_110px] items-center gap-2 text-[11px] font-medium text-stone-500 uppercase tracking-wider">
+          <span className="pl-7">Name</span>
+          <span className="text-right">Slug</span>
+          <span className="text-right">Datasets</span>
+          <span className="text-right pr-2">Actions</span>
+        </div>
+
+        <div className="p-2">
+          {tree.isLoading && <div className="text-sm text-stone-500 p-4">Loading…</div>}
           {tree.data && tree.data.length === 0 && (
             <div className="text-sm text-stone-500 text-center py-8">
               No categories yet. Click &quot;New category&quot; to add the first one.
@@ -88,16 +96,18 @@ function CategoryRow({ node, depth, onAddChild, onEdit }: RowProps) {
   return (
     <div>
       <div
-        className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-stone-50/60 group"
-        style={{ paddingLeft: `${depth * 20 + 8}px` }}
+        className="grid grid-cols-[1fr_160px_120px_110px] items-center gap-2 py-2 px-3 rounded-lg hover:bg-stone-50/60 group"
+        style={{ paddingLeft: `${depth * 20 + 12}px` }}
       >
-        <ChevronRight className={`w-3 h-3 text-stone-300 ${hasChildren ? '' : 'invisible'}`} />
-        <span className="flex-1 text-sm font-medium text-stone-900 truncate">{node.name}</span>
-        <span className="text-[11px] text-stone-400">{node.slug}</span>
-        <span className="text-[11px] text-stone-500 ml-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <ChevronRight className={`w-3 h-3 flex-shrink-0 text-stone-300 ${hasChildren ? '' : 'invisible'}`} />
+          <span className="text-sm font-medium text-stone-900 truncate">{node.name}</span>
+        </div>
+        <span className="text-[11px] text-stone-400 font-mono text-right truncate">{node.slug}</span>
+        <span className="text-[11px] text-stone-500 text-right">
           {usageCount} dataset{usageCount === 1 ? '' : 's'}
         </span>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition ml-2">
+        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition pr-1">
           <button
             onClick={() => onAddChild(node.id)}
             className="p-1.5 text-stone-500 hover:bg-stone-100 hover:text-brand-700 rounded transition"
@@ -164,7 +174,6 @@ function CategoryModal({ mode, parentId, existing, onClose }: ModalProps) {
         slug: slug.trim() || undefined,
         sortOrder,
       };
-      // Only include parentId if it changed or is explicitly set
       if (mode === 'create') {
         body.parentId = parent || undefined;
       } else if (mode === 'edit') {
@@ -190,7 +199,6 @@ function CategoryModal({ mode, parentId, existing, onClose }: ModalProps) {
     if (mode === 'create') return true;
     if (!existing) return true;
     if (c.id === existing.id) return false;
-    // Walk up parents — if we ever reach existing.id, it's a descendant
     let cursor = c;
     while (cursor.parentId) {
       if (cursor.parentId === existing.id) return false;
