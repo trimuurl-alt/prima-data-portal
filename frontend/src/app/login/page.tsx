@@ -96,7 +96,7 @@ export default function LoginPage() {
                 Secure access to client research.
               </h1>
               <p className="text-[15px] leading-relaxed text-stone-600 max-w-sm">
-                Insightful, innovative, independent investment research — delivered through the Primaresearch Data Portal.
+                Insightful, innovative, independent investment research. delivered through the Primaresearch Data Portal.
               </p>
             </div>
           </div>
